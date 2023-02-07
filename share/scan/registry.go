@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	manifestList "github.com/docker/distribution/manifest/manifestlist"
+	oci "github.com/docker/distribution/manifest/ocischema"
 	manifestV1 "github.com/docker/distribution/manifest/schema1"
 	manifestV2 "github.com/docker/distribution/manifest/schema2"
 	digest "github.com/opencontainers/go-digest"
@@ -208,6 +209,57 @@ func (rc *RegClient) getSchemaV1Id(manV1 *manifestV1.SignedManifest) string {
 		}
 	}
 	return id
+}
+
+// Cosign uses a derivative of an image digest to tag and store the signature
+// object in an OCI, this function mimics that in order to retrieve them given a digest
+// Example transition
+// Image Digest:            sha256:5e9473a466b637e566f32ede17c23d8b2fd7e575765a9ebd5169b9dbc8bb5d16
+// Resulting Signature Tag: sha256-5e9473a466b637e566f32ede17c23d8b2fd7e575765a9ebd5169b9dbc8bb5d16.sig
+func GetCosignSignatureTagFromDigest(digest string) string {
+	signatureTag := []rune(digest)
+	signatureTag[strings.Index(digest, ":")] = '-'
+	return string(signatureTag) + ".sig"
+}
+
+func (rc *RegClient) GetCosignSignaturesForDigest(ctx context.Context, repo, digest string) ([]string, error) {
+	log.WithFields(log.Fields{"repo": repo, "digest": digest}).Debug("fetching signatures")
+
+	signatureTag := GetCosignSignatureTagFromDigest(digest)
+	_, body, err := rc.ManifestRequest(ctx, repo, signatureTag, 2)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"manifestResponse": string(body),
+			"error":            err.Error(),
+		}).Error("error requesting signature manifests")
+		return nil, err
+	}
+
+	var manifest oci.DeserializedManifest
+	if err = manifest.UnmarshalJSON(body); err != nil {
+		log.WithFields(log.Fields{
+			"manifestResponse": string(body),
+			"error":            err.Error(),
+		}).Error("error deserializing signature manifest")
+		return nil, err
+	}
+
+	signatures := []string{}
+	for _, layer := range manifest.Layers {
+		for annotationKey, annotationValue := range layer.Annotations {
+			if annotationKey == "dev.cosignproject.cosign/signature" {
+				signatures = append(signatures, annotationValue)
+			}
+		}
+	}
+
+	log.WithFields(log.Fields{
+		"repo":       repo,
+		"digest":     digest,
+		"signatures": signatures,
+	}).Debug("fetched signatures")
+
+	return signatures, nil
 }
 
 func (rc *RegClient) Alive() (uint, error) {

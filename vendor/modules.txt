@@ -165,12 +165,13 @@ github.com/davecgh/go-spew/spew
 # github.com/dgrijalva/jwt-go v3.2.0+incompatible
 ## explicit
 github.com/dgrijalva/jwt-go
-# github.com/docker/distribution v2.7.1+incompatible => github.com/docker/distribution v2.8.0-beta.1+incompatible
+# github.com/docker/distribution v2.8.1+incompatible => github.com/docker/distribution v2.8.0-beta.1+incompatible
 ## explicit
 github.com/docker/distribution
 github.com/docker/distribution/digestset
 github.com/docker/distribution/manifest
 github.com/docker/distribution/manifest/manifestlist
+github.com/docker/distribution/manifest/ocischema
 github.com/docker/distribution/manifest/schema1
 github.com/docker/distribution/manifest/schema2
 github.com/docker/distribution/reference
@@ -271,6 +272,7 @@ github.com/neuvector/k8s/apis/admissionregistration/v1beta1
 github.com/neuvector/k8s/apis/apiextensions/v1
 github.com/neuvector/k8s/apis/apiextensions/v1beta1
 github.com/neuvector/k8s/apis/apps/v1
+github.com/neuvector/k8s/apis/batch/v1
 github.com/neuvector/k8s/apis/batch/v1beta1
 github.com/neuvector/k8s/apis/core/v1
 github.com/neuvector/k8s/apis/meta/v1
