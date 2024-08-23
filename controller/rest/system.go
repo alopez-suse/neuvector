@@ -231,7 +231,14 @@ func handlerSystemGetConfigBase(apiVer string, w http.ResponseWriter, r *http.Re
 		if fedRole := cacher.GetFedMembershipRoleNoAuth(); fedRole == api.FedRoleMaster || fedRole == api.FedRoleJoint {
 			if cconf := cacher.GetFedSystemConfig(acc); cconf == nil {
 				if scope == share.ScopeFed {
-					restRespAccessDenied(w, login)
+					if login.hasFedPermission() {
+						resp := api.RESTSystemConfigData{
+							FedConfig: &api.RESTFedSystemConfig{},
+						}
+						restRespSuccess(w, r, &resp, acc, login, nil, "")
+					} else {
+						restRespAccessDenied(w, login)
+					}
 					return
 				}
 			} else {
@@ -361,6 +368,10 @@ func handlerSystemGetConfigBase(apiVer string, w http.ResponseWriter, r *http.Re
 						ModeAutoM2PDuration: rconf.ModeAutoM2PDuration,
 					},
 					ScannerAutoscale: rconf.ScannerAutoscale,
+					TlsCfg: api.RESTSystemConfigTls{
+						EnableTLSVerification: rconf.EnableTLSVerification,
+						GlobalCaCerts:         rconf.GlobalCaCerts,
+					},
 				},
 			}
 			if respV2.Config.ModeAuto.ModeAutoD2MDuration == 0 {
@@ -987,6 +998,26 @@ func handlerSystemWebhookDelete(w http.ResponseWriter, r *http.Request, ps httpr
 	restRespSuccess(w, r, nil, acc, login, nil, "Delete system webhook")
 }
 
+func verifyCACerts(pemCerts []byte) error {
+	for len(pemCerts) > 0 {
+		var block *pem.Block
+		block, pemCerts = pem.Decode(pemCerts)
+		if block == nil {
+			break
+		}
+		if block.Type != "CERTIFICATE" || len(block.Headers) != 0 {
+			continue
+		}
+
+		certBytes := block.Bytes
+		_, err := x509.ParseCertificate(certBytes)
+		if err != nil {
+			return fmt.Errorf("failed to parse certificate: %w", err)
+		}
+	}
+	return nil
+}
+
 func configSystemConfig(w http.ResponseWriter, acc *access.AccessControl, login *loginSession, caller, scope, platform string,
 	rconf *api.RESTSystemConfigConfigData) (bool, error) {
 
@@ -1573,6 +1604,20 @@ func configSystemConfig(w http.ResponseWriter, acc *access.AccessControl, login 
 			if rc.NoTelemetryReport != nil {
 				cconf.NoTelemetryReport = *rc.NoTelemetryReport
 			}
+
+			if rc.EnableTLSVerification != nil {
+				cconf.EnableTLSVerification = *rc.EnableTLSVerification
+			}
+
+			if rc.GlobalCaCerts != nil {
+				for _, cacert := range *rc.GlobalCaCerts {
+					if err := verifyCACerts([]byte(cacert)); err != nil {
+						restRespErrorMessage(w, http.StatusBadRequest, api.RESTErrInvalidRequest, err.Error())
+						return kick, err
+					}
+				}
+				cconf.GlobalCaCerts = *rc.GlobalCaCerts
+			}
 		} else if scope == share.ScopeFed && rconf.FedConfig != nil {
 			// webhook for fed system config
 			if rconf.FedConfig.Webhooks != nil {
@@ -1680,6 +1725,12 @@ func handlerSystemConfigBase(apiVer string, w http.ResponseWriter, r *http.Reque
 				config.XffEnabled = configV2.MiscCfg.XffEnabled
 				config.NoTelemetryReport = configV2.MiscCfg.NoTelemetryReport
 			}
+
+			if configV2.TlsCfg != nil {
+				config.EnableTLSVerification = configV2.TlsCfg.EnableTLSVerification
+				config.GlobalCaCerts = configV2.TlsCfg.GlobalCaCerts
+			}
+
 			config.ScannerAutoscale = configV2.ScannerAutoscale
 			rconf.Config = config
 		} else {
@@ -2147,7 +2198,7 @@ func handlerSystemGetAlerts(w http.ResponseWriter, r *http.Request, ps httproute
 	var resp api.RESTNvAlerts = api.RESTNvAlerts{
 		NvUpgradeInfo: &api.RESTCheckUpgradeInfo{},
 	}
-	
+
 	// populate neuvector_upgrade_info
 	if nvUpgradeInfo := getNvUpgradeInfo(); nvUpgradeInfo != nil {
 		resp.NvUpgradeInfo = nvUpgradeInfo
@@ -2185,7 +2236,7 @@ func handlerSystemGetAlerts(w http.ResponseWriter, r *http.Request, ps httproute
 		}
 		if len(otherAlertGroup.Data) > 0 {
 			resp.AcceptableAlerts.OtherAlerts = otherAlertGroup
-		}		
+		}
 	}
 	certAlertGroup := &api.RESTNvAlertGroup{
 		Type: api.AlertTypeTlsCertificate,
