@@ -208,6 +208,21 @@ static int checkImplicitEnableFlag(char *enable)
     return 0;
 }
 
+static void getLogLevel(char **logLevel) {
+    if ((strcmp(*logLevel, "error") == 0) ||
+        (strcmp(*logLevel, "warn") == 0) ||
+        (strcmp(*logLevel, "info") == 0) ||
+        (strcmp(*logLevel, "debug") == 0)) {
+        return;
+    } else {
+        if (checkImplicitEnableFlag(*logLevel) == 1) {
+            *logLevel = "debug";
+        } else {
+            *logLevel = "info";
+        }
+    }
+}
+
 static pid_t fork_exec(int i)
 {
     pid_t pid;
@@ -337,12 +352,16 @@ static pid_t fork_exec(int i)
         }
 */
         if ((log_level = getenv(ENV_CTRL_PATH_DEBUG)) != NULL) {
-            if (checkImplicitEnableFlag(log_level) == 1) {
-                log_level = "debug";
+            getLogLevel(&log_level);
+            if (strcmp(log_level, "debug") == 0) {
                 g_debugOpa = 1;
             }
             args[a ++] = "-log_level";
             args[a ++] = log_level;
+        }
+        if ((debug_level = getenv(ENV_DEBUG_LEVEL)) != NULL) {
+            args[a ++] = "-v";
+            args[a ++] = debug_level;
         }
         if ((search_regs = getenv(ENV_CTRL_SEARCH_REGS)) != NULL) {
             args[a ++] = "-search_registries";
@@ -494,9 +513,7 @@ static pid_t fork_exec(int i)
             args[a ++] = url;
         }
         if ((log_level = getenv(ENV_CTRL_PATH_DEBUG)) != NULL) {
-            if (checkImplicitEnableFlag(log_level) == 1) {
-                log_level = "debug";
-            }
+            getLogLevel(&log_level);
             args[a ++] = "-log_level";
             args[a ++] = log_level;
         }
@@ -632,7 +649,7 @@ static int check_consul_ports(void)
     if (lan_port == NULL) {
         lan_port = DEFAULT_LAN_PORT;
     }
-    sprintf(shbuf,"netstat -lnp|grep '%s\\|%s'",rpc_port, lan_port);
+    sprintf(shbuf,"ss -lnp|grep '%s\\|%s'",rpc_port, lan_port);
 
     fp = popen(shbuf, "r");
     if (fp == NULL) {

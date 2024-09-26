@@ -76,7 +76,9 @@ func agentConfig(nType cluster.ClusterNotifyType, key string, value []byte) {
 
 func setControllerDebug(debug []string, debugCPath bool) {
 	var hasCPath, hasConn, hasMutex, hasScan, hasCluster, hasK8sMonitor bool
-
+	if len(debug) == 0 && !debugCPath {
+		return
+	}
 	for _, d := range debug {
 		switch d {
 		case "cpath":
@@ -210,8 +212,8 @@ func uniconfControllerDelete(id string, param interface{}) {
 	cluster.Delete(key)
 }
 
-func getNewServicePolicyMode() string {
-	return systemConfigCache.NewServicePolicyMode
+func getNewServicePolicyMode() (string, string) {
+	return systemConfigCache.NewServicePolicyMode, systemConfigCache.NewServiceProfileMode
 }
 
 func getNetServiceStatus() bool {
@@ -230,7 +232,7 @@ func getNewServiceProfileBaseline() string {
 	return systemConfigCache.NewServiceProfileBaseline
 }
 
-func (m CacheMethod) GetNewServicePolicyMode() string {
+func (m CacheMethod) GetNewServicePolicyMode() (string, string) {
 	return getNewServicePolicyMode()
 }
 
@@ -284,6 +286,7 @@ func (m CacheMethod) GetSystemConfig(acc *access.AccessControl) *api.RESTSystemC
 
 	rconf := api.RESTSystemConfig{
 		NewServicePolicyMode:      systemConfigCache.NewServicePolicyMode,
+		NewServiceProfileMode:     systemConfigCache.NewServiceProfileMode,
 		NewServiceProfileBaseline: systemConfigCache.NewServiceProfileBaseline,
 		UnusedGroupAging:          systemConfigCache.UnusedGroupAging,
 		SyslogLevel:               systemConfigCache.SyslogLevel,
@@ -674,6 +677,9 @@ func configInit() {
 	if cfg.IBMSAConfigNV.EpEnabled && cfg.IBMSAConfigNV.EpStart == 1 {
 		var param interface{} = &cfg.IBMSAConfig
 		cctx.StartStopFedPingPollFunc(share.StartPostToIBMSA, 0, param)
+	}
+	if !utils.CompareSliceWithoutOrder(systemConfigCache.ControllerDebug, cctx.Debug) {
+		systemConfigCache.ControllerDebug = cctx.Debug
 	}
 	setControllerDebug(systemConfigCache.ControllerDebug, cctx.DebugCPath)
 	scan.UpdateProxy(&systemConfigCache.RegistryHttpProxy, &systemConfigCache.RegistryHttpsProxy)

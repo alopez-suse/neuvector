@@ -287,9 +287,7 @@ func main() {
 	flag.Parse()
 
 	// default log_level is LogLevel_Info
-	if *log_level == share.LogLevel_Debug ||
-	   *log_level == share.LogLevel_Warn || 
-	   *log_level == share.LogLevel_Error {
+	if *log_level != "" && *log_level != gInfo.agentConfig.LogLevel {
 		gInfo.agentConfig.LogLevel = *log_level
 		log.SetLevel(share.CLUSGetLogLevel(gInfo.agentConfig.LogLevel))
 		if *log_level == share.LogLevel_Debug {
@@ -301,7 +299,20 @@ func main() {
 	}
 
 	if debug && *debug_level != "" {
-		levels := utils.NewSetFromSliceKind(append(gInfo.agentConfig.Debug, strings.Split(*debug_level, " ")...))
+		var validLevelSet utils.Set = utils.NewSet("conn", "error", "ctrl", "packet", "session", "timer", "tcp", "parser", "log", "ddos", "cluster", "policy", "dlp", "monitor")
+		splitLevels := strings.Split(*debug_level, " ")
+		var validLevels []string
+		for _, level := range splitLevels {
+			level = strings.TrimSpace(level)
+			if level == "all" {
+				validLevels = append(validLevels, validLevelSet.ToStringSlice()...)
+				break
+			}
+			if validLevelSet.Contains(level) {
+				validLevels = append(validLevels, level)
+			}
+		}
+		levels := utils.NewSetFromSliceKind(append(gInfo.agentConfig.Debug, validLevels...))
 		gInfo.agentConfig.Debug = levels.ToStringSlice()
 	}
 
@@ -688,6 +699,7 @@ func main() {
 		SendReport:     prober.SendAggregateFsMonReport,
 		SendAccessRule: sendLearnedFileAccessRule,
 		EstRule:        cbEstimateFileAlertByGroup,
+		NVProtect:      (!*skip_nvProtect),
 	}
 
 	if fileWatcher, err = fsmon.NewFileWatcher(&fmonConfig, gInfo.agentConfig.LogLevel); err != nil {

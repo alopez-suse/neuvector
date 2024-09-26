@@ -213,6 +213,7 @@ func main() {
 	var joinAddr, advAddr, bindAddr string
 	var err error
 	debug := false
+	debugLevel := make([]string, 0)
 
 	log.SetOutput(os.Stdout)
 	log.SetLevel(share.CLUSGetLogLevel(common.CtrlLogLevel))
@@ -246,6 +247,7 @@ func main() {
 	bind := flag.String("b", "", "Cluster bind address")
 	rtSock := flag.String("u", "", "Container socket URL")
 	log_level := flag.String("log_level", share.LogLevel_Info, "Controller log level")
+	debug_level := flag.String("v", "", "debug level")
 	restPort := flag.Uint("p", api.DefaultControllerRESTAPIPort, "REST API server port")
 	fedPort := flag.Uint("fed_port", 11443, "Fed REST API server port")
 	rpcPort := flag.Uint("rpc_port", 0, "Cluster server RPC port")
@@ -272,9 +274,7 @@ func main() {
 	flag.Parse()
 
 	// default log_level is LogLevel_Info
-	if *log_level == share.LogLevel_Debug ||
-	   *log_level == share.LogLevel_Warn || 
-	   *log_level == share.LogLevel_Error {
+	if *log_level != "" && *log_level != common.CtrlLogLevel {
 		common.CtrlLogLevel = *log_level
 		log.SetLevel(share.CLUSGetLogLevel(common.CtrlLogLevel))
 		scanLog.Level = share.CLUSGetLogLevel(common.CtrlLogLevel)
@@ -282,10 +282,28 @@ func main() {
 		if *log_level == share.LogLevel_Debug {
 			debug = true
 			ctrlEnv.debugCPath = true
+			debugLevel = []string{"cpath"}
 		} else {
 			connLog.Level = share.CLUSGetLogLevel(common.CtrlLogLevel)
 			mutexLog.Level = share.CLUSGetLogLevel(common.CtrlLogLevel)
 		}
+	}
+	if debug && *debug_level != "" {
+		var validLevelSet utils.Set = utils.NewSet("conn", "mutex", "scan", "cluster", "k8s_monitor")
+		splitLevels := strings.Split(*debug_level, " ")
+		var validLevels []string
+		for _, level := range splitLevels {
+			level = strings.TrimSpace(level)
+			if level == "all" {
+				validLevels = append(validLevels, validLevelSet.ToStringSlice()...)
+				break
+			}
+			if validLevelSet.Contains(level) {
+				validLevels = append(validLevels, level)
+			}
+		}
+		levels := utils.NewSetFromSliceKind(append(debugLevel, validLevels...))
+		debugLevel = levels.ToStringSlice()
 	}
 	if *join != "" {
 		// Join addresses might not be all ready. Accept whatever input is, resolve them
@@ -546,7 +564,7 @@ func main() {
 
 	db.CreateVulAssetDb(false)
 
-	kv.Init(Ctrler.ID, dev.Ctrler.Ver, Host.Platform, Host.Flavor, *persistConfig, isGroupMember, getConfigKvData)
+	kv.Init(Ctrler.ID, dev.Ctrler.Ver, Host.Platform, Host.Flavor, *persistConfig, isGroupMember, getConfigKvData, evqueue)
 	ruleid.Init()
 
 	// Start cluster
@@ -580,6 +598,12 @@ func main() {
 		*grpcPort = cluster.DefaultControllerGRPCPort
 	}
 	Ctrler.RPCServerPort = uint16(*grpcPort)
+
+	// pre-build compliance map
+	scanUtils.InitComplianceMeta(Host.Platform, Host.Flavor, Host.CloudPlatform)
+	scanUtils.InitImageBenchMeta()
+	scanUtils.UpdateComplianceConfigs()
+	Ctrler.ReadPrimeConfig = scanUtils.ReadPrimeConfig
 
 	ctlrPutLocalInfo()
 
@@ -649,7 +673,22 @@ func main() {
 		// Restore persistent config.
 		// Calling restore is unnecessary if this is not a new cluster installation, but not a big issue,
 		// assuming the PV should have the latest config.
-		restoredFedRole, defAdminRestored, _ = kv.GetConfigHelper().Restore()
+		var restored bool
+		var restoredKvVersion string
+		var errRestore error
+		restoredFedRole, defAdminRestored, restored, restoredKvVersion, errRestore = kv.GetConfigHelper().Restore()
+		if restored && errRestore == nil {
+			clog := share.CLUSEventLog{
+				Event:          share.CLUSEvKvRestored,
+				HostID:         Host.ID,
+				HostName:       Host.Name,
+				ControllerID:   Ctrler.ID,
+				ControllerName: Ctrler.Name,
+				ReportedAt:     time.Now().UTC(),
+				Msg:            fmt.Sprintf("Restored kv version: %s", restoredKvVersion),
+			}
+			evqueue.Append(&clog)
+		}
 		if restoredFedRole == api.FedRoleJoint {
 			// fed rules are not restored on joint cluster but there might be fed rules left in kv so
 			// 	we need to clean up fed rules & revisions in kv
@@ -740,10 +779,6 @@ func main() {
 		checkDefAdminFreq = 0 // do not check default admin's password if it's disabled
 	}
 
-	// pre-build compliance map
-	scanUtils.InitComplianceMeta(Host.Platform, Host.Flavor, Host.CloudPlatform)
-	go scanUtils.UpdateComplianceConfigs()
-
 	// start orchestration connection.
 	// orchConnector should be created before LeadChangeCb is registered.
 	orchObjChan := make(chan *resource.Event, 32)
@@ -788,6 +823,7 @@ func main() {
 		OrchChan:                 orchObjChan,
 		TimerWheel:               timerWheel,
 		DebugCPath:               ctrlEnv.debugCPath,
+		Debug:                    debugLevel,
 		EnableRmNsGroups:         enableRmNsGrps,
 		EnableIcmpPolicy:         enableIcmpPolicy,
 		ConnLog:                  connLog,

@@ -209,7 +209,7 @@ func (m CacheMethod) GetRiskScoreMetrics(acc, accCaller *access.AccessControl) *
 	var s api.RESTRiskScoreMetrics
 
 	s.Platform, s.K8sVersion, s.OCVersion = m.GetPlatform()
-	s.NewServiceMode = getNewServicePolicyMode()
+	s.NewServiceMode, s.NewProfileMode = getNewServicePolicyMode()
 
 	// Check if count system container/group
 	var disableSystem bool
@@ -248,6 +248,14 @@ func (m CacheMethod) GetRiskScoreMetrics(acc, accCaller *access.AccessControl) *
 			if g.BaselineProfile == share.ProfileZeroDrift {
 				s.Groups.ProtectGroupsZD++
 			}
+		}
+		switch g.ProfileMode {
+		case share.PolicyModeLearn:
+			s.Groups.ProfileDiscoverGroups++
+		case share.PolicyModeEvaluate:
+			s.Groups.ProfileMonitorGroups++
+		case share.PolicyModeEnforce:
+			s.Groups.ProfileProtectGroups++
 		}
 		s.Groups.Groups++
 	}
@@ -315,6 +323,9 @@ func (m CacheMethod) GetRiskScoreMetrics(acc, accCaller *access.AccessControl) *
 		if wl.ShareNetNS == "" {
 			epMap[cache.workload.ID] = &wlMini{mode: mode}
 			if podVuls, ok := podVulsMap[cache.podName]; ok {
+				if cache.scanBrief == nil {
+					cache.scanBrief = &api.RESTScanBrief{}
+				}
 				cache.scanBrief.CriticalVuls = podVuls.CriticalVuls
 				cache.scanBrief.HighVuls = podVuls.HighVuls
 				cache.scanBrief.MedVuls = podVuls.MedVuls

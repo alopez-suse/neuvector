@@ -33,6 +33,7 @@ const ReservedUserNameIBMSA string = "~nv.reserved.ibmsa"
 const ScanPlatformID = "platform"
 
 const DefaultCtrlLogLevel string = "info"
+
 var CtrlLogLevel string = DefaultCtrlLogLevel
 
 type LocalDevice struct {
@@ -97,6 +98,7 @@ const RegistryFedRepoScanName string = "fed._repo_scan"
 
 var DefaultSystemConfig = share.CLUSSystemConfig{
 	NewServicePolicyMode:      share.PolicyModeLearn,
+	NewServiceProfileMode:     share.PolicyModeLearn,
 	NewServiceProfileBaseline: share.ProfileZeroDrift,
 	UnusedGroupAging:          share.UnusedGroupAgingDefault,
 	CLUSSyslogConfig: share.CLUSSyslogConfig{
@@ -331,6 +333,8 @@ var LogEventMap = map[share.TLogEvent]LogEventInfo{
 	share.CLUSEvScannerAutoScaleDisabled:    {api.EventNameScannerAutoScaleDisabled, api.EventCatConfig, api.LogLevelNOTICE},
 	share.CLUSEvK8sAdmissionWebhookCChange:  {api.EventNameK8sAdmissionWebhookChange, api.EventCatAdmCtrl, api.LogLevelNOTICE},
 	share.CLUSEvGroupMetricViolation:        {api.EventNameGroupMetricViolation, api.EventCatGroup, api.LogLevelWARNING},
+	share.CLUSEvKvRestored:                  {api.EventNameKvRestored, api.EventCatConfig, api.LogLevelINFO},
+	share.CLUSEvScanDataRestored:            {api.EventNameScanDataRestored, api.EventCatScan, api.LogLevelINFO},
 }
 
 type LogIncidentInfo struct {
