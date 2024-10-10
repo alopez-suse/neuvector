@@ -1691,14 +1691,12 @@ func startNeuVectorMonitors(id, role string, info *container.ContainerMetaExtra)
 	// Send event to controller
 	if !isChild {
 		if c.pid != 0 {
-			prober.BuildProcessFamilyGroups(c.id, c.pid, true, info.Privileged, nil)
 			c.examIntface = true
 			prober.StartMonitorInterface(c.id, c.pid, containerReexamIntfMax)
 			examNeuVectorInterface(c, changeInit)
 		}
 	} else {
 		if parent != nil && !parent.examIntface {
-			prober.BuildProcessFamilyGroups(c.id, c.pid, false, info.Privileged, nil)
 			parent.examIntface = true
 			c.examIntface = true
 			prober.StartMonitorInterface(c.id, c.pid, containerReexamIntfMax)
@@ -1708,6 +1706,7 @@ func startNeuVectorMonitors(id, role string, info *container.ContainerMetaExtra)
 
 	// process monitor : protect mode, process profiles for all neuvector containers
 	if agentEnv.containerShieldMode {
+		prober.BuildProcessFamilyGroups(c.id, c.pid, false, info.Privileged, nil)
 		// process killer per policy: removed by evaluating other same-kind instances
 		// since the same policy might be shared by several same-kind instances in a node
 		pe.InsertNeuvectorProcessProfilePolicy(group, role)
@@ -1726,14 +1725,13 @@ func startNeuVectorMonitors(id, role string, info *container.ContainerMetaExtra)
 			for _, fltr := range conf.Profile.Filters {
 				switch fltr.Path {
 				case "/bin", "/sbin", "/usr/bin", "/usr/sbin": // apply blocking controls
-				/*	filters = append(filters, share.CLUSFileMonitorFilter{
+					filters = append(filters, share.CLUSFileMonitorFilter{
 						Behavior:    share.FileAccessBehaviorMonitor, // share.FileAccessBehaviorBlock,
 						Path:        fltr.Path,
 						Regex:       ".*",
 						Recursive:   false,
 						CustomerAdd: true,
 					})
-				*/
 				default:
 					filters = append(filters, fltr)
 				}
