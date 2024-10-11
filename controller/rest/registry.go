@@ -112,6 +112,12 @@ func parseFilter(filters []string, regType string) ([]*share.CLUSRegistryFilter,
 	for n, filter := range filters {
 		var org, repo, tag string
 		var err error
+		var isBlacklistFilter bool
+
+		if filter[0] == '!' {
+			isBlacklistFilter = true
+			filter = filter[1:] // remove leading '!'
+		}
 
 		i := strings.Index(filter, "/")
 		if i > 0 {
@@ -146,7 +152,7 @@ func parseFilter(filters []string, regType string) ([]*share.CLUSRegistryFilter,
 			return nil, errors.New("Regular express error in tag")
 		}
 
-		repoFilters[n] = &share.CLUSRegistryFilter{Org: org, Repo: repo, Tag: tag}
+		repoFilters[n] = &share.CLUSRegistryFilter{Org: org, Repo: repo, Tag: tag, IsBlacklistFilter: isBlacklistFilter}
 		log.WithFields(log.Fields{"parsed": repoFilters[n]}).Debug("")
 	}
 

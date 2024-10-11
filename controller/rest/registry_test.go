@@ -17,19 +17,19 @@ func TestFilterPositive(t *testing.T) {
 	preTest()
 
 	cases := map[string]share.CLUSRegistryFilter{
-		"neuvector/image:latest":      share.CLUSRegistryFilter{"neuvector", "image", "latest"},
-		"neuvector/image:*":           share.CLUSRegistryFilter{"neuvector", "image", ".*"},
-		"neuvector/*:*":               share.CLUSRegistryFilter{"neuvector", ".*", ".*"},
-		"neuvector/*":                 share.CLUSRegistryFilter{"neuvector", ".*", ".*"},
-		"*:*":                         share.CLUSRegistryFilter{"", ".*", ".*"},
-		"neuvector/[image1|image2]:*": share.CLUSRegistryFilter{"neuvector", "[image1|image2]", ".*"},
-		"neu*:*":                      share.CLUSRegistryFilter{"", "neu.*", ".*"},
-		"neuvector/*:v2.1":            share.CLUSRegistryFilter{"neuvector", ".*", "v2.1"},
-		"neuvector/*:v2.*":            share.CLUSRegistryFilter{"neuvector", ".*", "v2.*"},
-		"neuvector/*:v2.[0]{1,2}":     share.CLUSRegistryFilter{"neuvector", ".*", "v2.[0]{1,2}"},
-		"neuvector/*:v2.[0]*":         share.CLUSRegistryFilter{"neuvector", ".*", "v2.[0]*"},
-		"neuvector/*_20201010_*:*":    share.CLUSRegistryFilter{"neuvector", ".*_20201010_.*", ".*"},
-		"neuvector/.*_20201010_*:*":   share.CLUSRegistryFilter{"neuvector", ".*_20201010_.*", ".*"},
+		"neuvector/image:latest":      share.CLUSRegistryFilter{"neuvector", "image", "latest", false},
+		"neuvector/image:*":           share.CLUSRegistryFilter{"neuvector", "image", ".*", false},
+		"neuvector/*:*":               share.CLUSRegistryFilter{"neuvector", ".*", ".*", false},
+		"neuvector/*":                 share.CLUSRegistryFilter{"neuvector", ".*", ".*", false},
+		"*:*":                         share.CLUSRegistryFilter{"", ".*", ".*", false},
+		"neuvector/[image1|image2]:*": share.CLUSRegistryFilter{"neuvector", "[image1|image2]", ".*", false},
+		"neu*:*":                      share.CLUSRegistryFilter{"", "neu.*", ".*", false},
+		"neuvector/*:v2.1":            share.CLUSRegistryFilter{"neuvector", ".*", "v2.1", false},
+		"neuvector/*:v2.*":            share.CLUSRegistryFilter{"neuvector", ".*", "v2.*", false},
+		"neuvector/*:v2.[0]{1,2}":     share.CLUSRegistryFilter{"neuvector", ".*", "v2.[0]{1,2}", false},
+		"neuvector/*:v2.[0]*":         share.CLUSRegistryFilter{"neuvector", ".*", "v2.[0]*", false},
+		"neuvector/*_20201010_*:*":    share.CLUSRegistryFilter{"neuvector", ".*_20201010_.*", ".*", false},
+		"neuvector/.*_20201010_*:*":   share.CLUSRegistryFilter{"neuvector", ".*_20201010_.*", ".*", false},
 	}
 
 	for k, v := range cases {
@@ -71,6 +71,40 @@ func TestFilterNegative(t *testing.T) {
 			t.Errorf("Error: %v\n", v)
 			t.Errorf("  Expect: invalid format\n")
 			t.Errorf("  Actual: %v\n", *f[0])
+		}
+	}
+
+	postTest()
+}
+
+func TestParseFilterWithBlacklistFilters(t *testing.T) {
+	preTest()
+
+	cases := []string{
+		"neuvector/allowed-repo:*",
+		"!neuvector/blacklisted-repo:*",
+	}
+
+	parsedFilters, err := parseFilter(cases, share.RegistryTypeDocker)
+	if err != nil {
+		t.Errorf("encountered error when parsing filters: %s", err.Error())
+	}
+
+	for _, parsedFilter := range parsedFilters {
+		switch parsedFilter.Repo {
+		case "allowed-repo":
+			if parsedFilter.IsBlacklistFilter {
+				t.Errorf("IsBlacklistFilter field for filter without leading ! symbol should be set to false\n")
+			}
+		case "blacklisted-repo":
+			if parsedFilter.Org != "neuvector" {
+				t.Errorf("organization incorrectly parsed on blaclist filter, expected 'neuvector' got '%s'\n", parsedFilter.Org)
+			}
+			if !parsedFilter.IsBlacklistFilter {
+				t.Errorf("IsBlacklistFilter field for filter with leading ! symbol should be set to true\n")
+			}
+		default:
+			t.Errorf("resulting parsed repo '%s' does not exist in test cases\n", parsedFilter.Repo)
 		}
 	}
 

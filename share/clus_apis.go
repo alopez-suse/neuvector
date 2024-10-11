@@ -1811,9 +1811,10 @@ type CLUSProcessProfile struct {
 }
 
 type CLUSRegistryFilter struct {
-	Org  string `json:"organization"`
-	Repo string `json:"repository"`
-	Tag  string `json:"tag"`
+	Org               string `json:"organization"`
+	Repo              string `json:"repository"`
+	Tag               string `json:"tag"`
+	IsBlacklistFilter bool   `json:"is_blacklist_filter"`
 }
 
 type CLUSRegistryState struct {
