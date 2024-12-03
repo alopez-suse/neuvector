@@ -51,6 +51,7 @@ func (q *tCrdRequestsMgr) reloadRecordList() {
 }
 
 func (q *tCrdRequestsMgr) scheduleKvEnqueue(ar *admissionv1beta1.AdmissionReview) bool {
+	log.Debug("NeuVector Webhook - Schedule Kv")
 	sent := false
 	select {
 	case q.buffer <- ar:
@@ -72,6 +73,7 @@ LOOP:
 			log.Info("Got OS shutdown signal, shutting down crd kv queue gracefully...")
 			break LOOP
 		case ar := <-q.buffer:
+			log.Debug("NeuVector CRD - Process CRD in queue")
 			if detail, err := q.crdProcEnqueue(ar); err != nil {
 				crUid := ""
 				req := ar.Request
@@ -121,6 +123,7 @@ func (q *tCrdRequestsMgr) crdProcEnqueue(ar *admissionv1beta1.AdmissionReview) (
 	if err := clusHelper.PutCrdRecord(&crdQueue, name); err != nil {
 		return "Enqueu crd put error", err
 	}
+	log.Debug("NeuVector CRD - Put Record Done")
 
 	// second save the unique name of the crd event in the queue for orderly process
 	crdEventQueue := clusHelper.GetCrdEventQueue()
@@ -129,6 +132,7 @@ func (q *tCrdRequestsMgr) crdProcEnqueue(ar *admissionv1beta1.AdmissionReview) (
 	}
 	crdEventQueue.CrdEventRecord = append(crdEventQueue.CrdEventRecord, name)
 	if err := clusHelper.PutCrdEventQueue(crdEventQueue); err != nil {
+		log.WithFields(log.Fields{"error": err.Error()}).Debug("NeuVector CRD - CRD Put Event Error")
 		errStr := err.Error()
 		if strings.HasPrefix(errStr, "zip data(") && strings.HasSuffix(errStr, ") too big") {
 			if req.Operation == "DELETE" && len(crdEventQueue.CrdEventRecord) > 0 {
@@ -153,6 +157,9 @@ func (q *tCrdRequestsMgr) crdProcEnqueue(ar *admissionv1beta1.AdmissionReview) (
 					crdEventQueue.CrdEventRecord = crdEventQueue.CrdEventRecord[:j]
 					crdEventQueue.CrdEventRecord = append(crdEventQueue.CrdEventRecord, name)
 					err = clusHelper.PutCrdEventQueue(crdEventQueue)
+					if err != nil {
+						return "fail put crd event in clus", err
+					}
 					// => TODO : what if it fails again because the key value size is still too big?
 				}
 				if err == nil {
@@ -165,6 +172,7 @@ func (q *tCrdRequestsMgr) crdProcEnqueue(ar *admissionv1beta1.AdmissionReview) (
 		}
 		return fmt.Sprintf("Enqueu crd event put error(%d entries)", len(crdEventQueue.CrdEventRecord)), err
 	}
+	log.Debug("NeuVector CRD - Process CRD Done")
 	return "", nil
 }
 
@@ -208,6 +216,7 @@ func (q *tCrdRequestsMgr) crdQueueProc() {
 	// with a select statement that checks for multiple events without ending the loop.
 	//nolint:gosimple
 	for {
+		log.Debug("NeuVector CRD - Poll Process CRD")
 		select {
 		case <-q.crdReqProcTimer.C:
 			// after wake-up the thread will try to drain crd event queue
@@ -303,6 +312,7 @@ func (q *tCrdRequestsMgr) crdQueueProc() {
 
 			switch req.Operation {
 			case "DELETE":
+				log.Debug("NeuVector CRD - Delete operation")
 				if err = json.Unmarshal(req.OldObject.Raw, &secRulePartial); err == nil {
 					kind = secRulePartial.Kind
 					if req.Name == "" {
@@ -315,6 +325,7 @@ func (q *tCrdRequestsMgr) crdQueueProc() {
 					errMsg = "CRD Rule format error"
 				}
 			case "CREATE", "UPDATE":
+				log.Debug("NeuVector CRD - Create/Update Operation")
 				if crdSecRule, err = resource.CreateNvCrdObject(rscType); crdSecRule != nil {
 					if err = json.Unmarshal(req.Object.Raw, crdSecRule); err == nil {
 						crdMD5, _, err = crdHandler.getCrInfo(crdSecRule)
@@ -429,6 +440,7 @@ func (q *tCrdRequestsMgr) crdQueueProc() {
 }
 
 func (whsvr *WebhookServer) crdserveK8s(w http.ResponseWriter, r *http.Request, body []byte) {
+	log.Debug("NeuVector Webhook - K8s Serving CRD")
 	ar := admissionv1beta1.AdmissionReview{}
 	if _, _, err := deserializer.Decode(body, nil, &ar); err != nil {
 		log.WithFields(log.Fields{"error": err}).Error("can't decode body")
@@ -574,10 +586,12 @@ func (whsvr *WebhookServer) crdserveK8s(w http.ResponseWriter, r *http.Request, 
 			}
 		}
 	}
+	log.Debug("NeuVector Webhook - K8s CRD Serve Done")
 }
 
 // Serve method for Admission Control webhook server
 func (whsvr *WebhookServer) crdserve(w http.ResponseWriter, r *http.Request) {
+	log.Debug("NeuVector Webhook - Serving CRD")
 
 	var body []byte
 	if r.Body != nil {
